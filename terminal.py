@@ -816,71 +816,71 @@ with tab1:
     col_sel, col_run = st.columns([3, 1])
     selected_asset = col_sel.selectbox("Target Asset", symbols, index=0, key="council_asset")
     
-    if col_run.button("🚀 ANALYZE", width='stretch'):
+   if col_run.button("🚀 ANALYZE", width='stretch'):
         with st.spinner("Coordinating Agent Council..."):
             # 1. Gather Intelligence
             price_df = engine.get_historical_candles(selected_asset)
-            social_posts = engine.fetch_twitter_posts(query=selected_asset)
-            news = engine.fetch_crypto_news(max_articles=5)
-            whales = engine.get_whale_movements()
             
-            # 2. Parallel AI Processing
-            analyst = council.get_analyst_view(social_posts + news)
-            critic = council.get_critic_view(analyst)
-            final_signal = council.get_synthesized_view(analyst, critic)
-            preds = predict_directional_movement(price_df)
-            
-            # 3. Manipulation Detection
-            curr_change = price_data.get(selected_asset, {}).get('change_24h', 0)
-            parts = final_signal.split('|')
-            sent_score = float(parts[1].strip()) if len(parts) > 1 else 0.5
-            manip_alert = council.detect_manipulation(curr_change, sent_score)
-            
-            # 4. Display Results
-            st.divider()
-            c1, c2, c3 = st.columns([1, 1, 1.5])
-            
-            with c1:
-                st.subheader("🎯 AI Signal")
-                st.markdown(f"### {parts[0].strip() if len(parts)>0 else 'NEUTRAL'}")
-                st.progress(sent_score, text=f"Confidence: {sent_score:.0%}")
-                st.warning(manip_alert)
-            
-            with c2:
-                st.subheader("📈 Forecast (4h)")
-                p4h = preds['4h']
-                st.metric("Target", f"${p4h['price']}", p4h['change'])
-                st.caption(f"Range: {p4h['range']}")
+            # --- THE FIX: Check if data exists before proceeding ---
+            if price_df is not None and not price_df.empty and len(price_df) > 0:
+                social_posts = engine.fetch_twitter_posts(query=selected_asset)
+                news = engine.fetch_crypto_news(max_articles=5)
+                whales = engine.get_whale_movements()
                 
-            with c3:
-                # 🐋 FEATURE 4: Smart Whale Behavior
-                st.subheader("🐋 Institutional Flow")
-                intent = engine.analyze_whale_intent(whales.to_dict('records'))
-                st.info(f"**Intent:** {intent}")
+                # 2. Parallel AI Processing
+                analyst = council.get_analyst_view(social_posts + news)
+                critic = council.get_critic_view(analyst)
+                final_signal = council.get_synthesized_view(analyst, critic)
+                preds = predict_directional_movement(price_df)
                 
-            # 🔍 FEATURE 1 / 10: Explainable Waterfall
-            with st.expander("🔍 VIEW XAI REASONING WATERFALL (EXPLAINABLE AI)", expanded=True):
-                st.markdown(f"### 🧐 Multi-Source Analysis")
-                st.write(f"**Senior Analyst:** {analyst}")
-                st.write(f"**Risk Critic:** {critic}")
-                st.success(f"**Final Executive Summary:** {final_signal}")
+                # 3. Manipulation Detection
+                # Safety check for price_data dictionary access
+                current_asset_key = selected_asset + "USDT"
+                curr_change = price_data.get(current_asset_key, {}).get('change_24h', 0)
                 
-            # Update Global Context for Assistant
-            st.session_state.market_context = f"{selected_asset} analysis: {final_signal}. Whale intent: {intent}."
-            
-            # Log Signal with Entry Price for ROI Verification
-            st.session_state.signal_log.insert(0, {
-                "Time": datetime.now().strftime("%H:%M:%S"),
-                "Asset": selected_asset,
-                "Signal": parts[0].strip() if len(parts)>0 else "HOLD",
-                "Entry": price_df.iloc[-1]['close'],
-                "Current": price_df.iloc[-1]['close'],
-                "Status": "PENDING",
-                "Trust": f"{sent_score:.0%}"
-            })
-            
-            # 🔥 V3 FEATURE: Desktop Alerts
-            trigger_desktop_alert(selected_asset, parts[0].strip(), f"{sent_score:.0%}")
+                parts = final_signal.split('|')
+                sent_score = float(parts[1].strip()) if len(parts) > 1 else 0.5
+                manip_alert = council.detect_manipulation(curr_change, sent_score)
+                
+                # 4. Display Results
+                st.divider()
+                c1, c2, c3 = st.columns([1, 1, 1.5])
+                
+                with c1:
+                    st.subheader("🎯 AI Signal")
+                    st.markdown(f"### {parts[0].strip() if len(parts)>0 else 'NEUTRAL'}")
+                    st.progress(sent_score, text=f"Confidence: {sent_score:.0%}")
+                    st.warning(manip_alert)
+                
+                with c2:
+                    st.subheader("📈 Forecast (4h)")
+                    p4h = preds.get('4h', {'price': 0, 'change': '0%', 'range': 'N/A'})
+                    st.metric("Target", f"${p4h['price']}", p4h['change'])
+                    st.caption(f"Range: {p4h['range']}")
+                    
+                with c3:
+                    st.subheader("🐋 Institutional Flow")
+                    intent = engine.analyze_whale_intent(whales.to_dict('records') if hasattr(whales, 'to_dict') else [])
+                    st.info(f"**Intent:** {intent}")
+                    
+                # 🔍 Explainable Waterfall
+                with st.expander("🔍 VIEW XAI REASONING WATERFALL", expanded=True):
+                    st.write(f"**Senior Analyst:** {analyst}")
+                    st.write(f"**Risk Critic:** {critic}")
+                
+                # Log Signal Safely
+                st.session_state.signal_log.insert(0, {
+                    "Time": datetime.now().strftime("%H:%M:%S"),
+                    "Asset": selected_asset,
+                    "Signal": parts[0].strip() if len(parts)>0 else "HOLD",
+                    "Entry": price_df.iloc[-1]['close'],
+                    "Current": price_df.iloc[-1]['close'],
+                    "Status": "PENDING",
+                    "Trust": f"{sent_score:.0%}"
+                })
+            else:
+                # Show error message instead of crashing
+                st.error(f"⚠️ Market Data Unavailable for {selected_asset}. Binance API may be rate-limiting the cloud server. Please retry in a few seconds.")
 
 with tab2:
     # 📉 V3 FEATURE: Advanced Plotly Intelligence Charts
