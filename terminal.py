@@ -891,16 +891,13 @@ with tab2:
     # Fetch data from engine
     hist_price = engine.get_historical_candles(chart_asset + "USDT")
     
-    # --- THE FIX: SAFETY CHECK ---
-    if hist_price is not None and not hist_price.empty:
-        # Mocking sentiment data for the trend chart
-        # We only run this if hist_price actually has rows to avoid TypeError
+    # --- SAFETY CHECK: Only proceed if data is valid ---
+    if hist_price is not None and not hist_price.empty and len(hist_price) > 0:
+        # Sentiment vs Price chart
         sent_trend = [0.5 + (np.random.random()-0.5)*0.2 for _ in range(len(hist_price))]
-        
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=hist_price['timestamp'], y=hist_price['close'], name="Price", yaxis="y"))
         fig.add_trace(go.Bar(x=hist_price['timestamp'], y=sent_trend, name="AI Sentiment", yaxis="y2", opacity=0.3))
-        
         fig.update_layout(
             title=f"{chart_asset} Sentiment-Price Divergence",
             yaxis=dict(title="Price ($)"),
@@ -909,87 +906,182 @@ with tab2:
             height=400
         )
         st.plotly_chart(fig, use_container_width=True)
+        
+        # --- ⏰ TIME SERIES PREDICTION (MOVED INSIDE THE SAFETY CHECK) ---
+        st.subheader("⏰ Price Forecast (ARIMA Time Series)")
+        
+        # Initialize session state for timeframe
+        if 'selected_forecast_timeframe' not in st.session_state:
+            st.session_state.selected_forecast_timeframe = '1h'
+        
+        # Helper function to generate forecast for different timeframes
+        def generate_timeframe_forecast(price_data, current_price, timeframe):
+            """Generate forecast with appropriate periods based on timeframe"""
+            if timeframe == '15m':
+                periods = 12
+                hours_label = "3 Hours"
+                conf_factor = 0.12
+            elif timeframe == '1h':
+                periods = 24
+                hours_label = "24 Hours"
+                conf_factor = 0.15
+            elif timeframe == '4h':
+                periods = 24
+                hours_label = "4 Days"
+                conf_factor = 0.20
+            else:
+                periods = 24
+                hours_label = "24 Hours"
+                conf_factor = 0.15
+            
+            # Generate timestamps
+            base_datetime = datetime.now()
+            if timeframe == '15m':
+                timestamps = [base_datetime + timedelta(minutes=15*i) for i in range(1, periods+1)]
+            elif timeframe == '1h':
+                timestamps = [base_datetime + timedelta(hours=i) for i in range(1, periods+1)]
+            else:
+                timestamps = [base_datetime + timedelta(hours=4*i) for i in range(1, periods+1)]
+            
+            # Simulate forecast with trend continuation
+            recent_trend = np.mean(np.diff(price_data[-5:]))
+            predictions = []
+            for i in range(periods):
+                noise = np.random.normal(0, current_price * 0.015)
+                trend_component = recent_trend * (i + 1) * 0.02
+                pred = current_price + trend_component + noise
+                predictions.append(max(pred, current_price * 0.95))
+            
+            return {
+                'timestamps': timestamps,
+                'predictions': np.array(predictions),
+                'conf_factor': conf_factor,
+                'periods': periods,
+                'hours_label': hours_label
+            }
+        
+        # Timeframe selector buttons
+        col_tf1, col_tf2, col_tf3 = st.columns(3)
+        
+        with col_tf1:
+            if st.button("⏱️ 15 Minutes", use_container_width=True, 
+                        key="forecast_tf_15m_btn",
+                        disabled=(st.session_state.selected_forecast_timeframe == '15m')):
+                st.session_state.selected_forecast_timeframe = '15m'
+                st.rerun()
+        
+        with col_tf2:
+            if st.button("⏲️ 1 Hour", use_container_width=True, 
+                        key="forecast_tf_1h_btn",
+                        disabled=(st.session_state.selected_forecast_timeframe == '1h')):
+                st.session_state.selected_forecast_timeframe = '1h'
+                st.rerun()
+        
+        with col_tf3:
+            if st.button("⏳ 4 Hours", use_container_width=True, 
+                        key="forecast_tf_4h_btn",
+                        disabled=(st.session_state.selected_forecast_timeframe == '4h')):
+                st.session_state.selected_forecast_timeframe = '4h'
+                st.rerun()
+        
+        st.divider()
+        
+        with st.spinner(f"Generating {st.session_state.selected_forecast_timeframe} forecast for {chart_asset}..."):
+            current_price = hist_price['close'].iloc[-1]
+            forecast_data = generate_timeframe_forecast(
+                hist_price['close'].values, 
+                current_price,
+                st.session_state.selected_forecast_timeframe
+            )
+            
+            if forecast_data:
+                # Create forecast visualization
+                forecast_fig = go.Figure()
+                
+                # Add historical prices (context)
+                if st.session_state.selected_forecast_timeframe == '15m':
+                    lookback = min(48, len(hist_price))
+                elif st.session_state.selected_forecast_timeframe == '1h':
+                    lookback = min(72, len(hist_price))
+                else:
+                    lookback = min(96, len(hist_price))
+                
+                hist_start = len(hist_price) - lookback
+                
+                forecast_fig.add_trace(go.Scatter(
+                    x=hist_price['timestamp'].iloc[hist_start:],
+                    y=hist_price['close'].iloc[hist_start:],
+                    name="Historical Price",
+                    line=dict(color="#00d4aa", width=2),
+                    mode="lines",
+                    hovertemplate="<b>Historical</b><br>Time: %{x}<br>Price: $%{y:.2f}<extra></extra>"
+                ))
+                
+                forecast_fig.add_trace(go.Scatter(
+                    x=forecast_data['timestamps'],
+                    y=forecast_data['predictions'],
+                    name=f"{st.session_state.selected_forecast_timeframe.upper()} Forecast",
+                    line=dict(color="#ffa500", width=2, dash="dash"),
+                    mode="lines+markers",
+                    marker=dict(size=6),
+                    hovertemplate="<b>Forecast</b><br>Time: %{x}<br>Price: $%{y:.2f}<extra></extra>"
+                ))
+                
+                std_dev = np.std(forecast_data['predictions']) * forecast_data['conf_factor']
+                upper_band = np.array(forecast_data['predictions']) + std_dev
+                lower_band = np.array(forecast_data['predictions']) - std_dev
+                
+                forecast_fig.add_trace(go.Scatter(
+                    x=forecast_data['timestamps'] + forecast_data['timestamps'][::-1],
+                    y=list(upper_band) + list(lower_band[::-1]),
+                    fill="toself",
+                    fillcolor="rgba(255, 165, 0, 0.2)",
+                    line=dict(color="rgba(255, 165, 0, 0)"),
+                    name="Confidence Band (±" + f"{(std_dev/current_price*100):.1f}%)",
+                    showlegend=True,
+                    hoverinfo="skip"
+                ))
+                
+                forecast_fig.update_layout(
+                    title=f"{chart_asset} - {st.session_state.selected_forecast_timeframe.upper()} Forecast ({forecast_data['hours_label']})",
+                    xaxis_title="Time",
+                    yaxis_title="Price (USD)",
+                    template="plotly_dark",
+                    height=450,
+                    hovermode="x unified",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(10, 14, 39, 0.9)"
+                )
+                
+                st.plotly_chart(forecast_fig, use_container_width=True)
+                
+                # Display forecast metrics
+                metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+                
+                with metric_col1:
+                    min_pred = min(forecast_data['predictions'])
+                    change_pct = ((min_pred / current_price) - 1) * 100
+                    st.metric("Forecast Low", f"${min_pred:.2f}", f"{change_pct:+.2f}%")
+                
+                with metric_col2:
+                    max_pred = max(forecast_data['predictions'])
+                    change_pct = ((max_pred / current_price) - 1) * 100
+                    st.metric("Forecast High", f"${max_pred:.2f}", f"{change_pct:+.2f}%")
+                
+                with metric_col3:
+                    end_pred = forecast_data['predictions'][-1]
+                    change_pct = ((end_pred / current_price) - 1) * 100
+                    st.metric("Expected Price", f"${end_pred:.2f}", f"{change_pct:+.2f}%")
+                
+                with metric_col4:
+                    volatility = (std_dev / current_price) * 100
+                    st.metric("Volatility Range", f"±{volatility:.2f}%", "Confidence Region")
+                
+                st.caption(f"🔄 Timeframe: {st.session_state.selected_forecast_timeframe.upper()} | Periods: {forecast_data['periods']} | Updated: {datetime.now().strftime('%H:%M:%S')}")
+            else:
+                st.warning(f"⚠️ Unable to generate forecast for {chart_asset}. Please try again...")
     else:
         st.warning(f"📊 Market correlation data for {chart_asset} is temporarily unavailable. The Binance API may be rate-limiting the server.")
-    # --- END OF FIX ---
-
-    # ⏰ TIME SERIES PREDICTION - Timeframe-based Forecast using ARIMA Model
-    st.subheader("⏰ Price Forecast (ARIMA Time Series)")
-    
-    # Initialize session state for timeframe
-    if 'selected_forecast_timeframe' not in st.session_state:
-        st.session_state.selected_forecast_timeframe = '1h'
-    
-    # Helper function to generate forecast for different timeframes
-    def generate_timeframe_forecast(price_data, current_price, timeframe):
-        """Generate forecast with appropriate periods based on timeframe"""
-        if timeframe == '15m':
-            periods = 12  # 3 hours of 15-min candles
-            hours_label = "3 Hours"
-            conf_factor = 0.12
-        elif timeframe == '1h':
-            periods = 24  # 24 hours ahead
-            hours_label = "24 Hours"
-            conf_factor = 0.15
-        elif timeframe == '4h':
-            periods = 24  # 4 days ahead (24 * 4-hour periods)
-            hours_label = "4 Days"
-            conf_factor = 0.20
-        else:
-            periods = 24
-            hours_label = "24 Hours"
-            conf_factor = 0.15
-        
-        # Generate timestamps
-        base_datetime = datetime.now()
-        if timeframe == '15m':
-            timestamps = [base_datetime + timedelta(minutes=15*i) for i in range(1, periods+1)]
-        elif timeframe == '1h':
-            timestamps = [base_datetime + timedelta(hours=i) for i in range(1, periods+1)]
-        else:  # 4h
-            timestamps = [base_datetime + timedelta(hours=4*i) for i in range(1, periods+1)]
-        
-        # Simulate forecast with trend continuation
-        recent_trend = np.mean(np.diff(price_data[-5:]))  # Recent trend direction
-        predictions = []
-        for i in range(periods):
-            # Add trend + random fluctuation
-            noise = np.random.normal(0, current_price * 0.015)
-            trend_component = recent_trend * (i + 1) * 0.02
-            pred = current_price + trend_component + noise
-            predictions.append(max(pred, current_price * 0.95))  # Don't drop too much
-        
-        return {
-            'timestamps': timestamps,
-            'predictions': np.array(predictions),
-            'conf_factor': conf_factor,
-            'periods': periods,
-            'hours_label': hours_label
-        }
-    
-    # Timeframe selector buttons
-    col_tf1, col_tf2, col_tf3 = st.columns(3)
-    
-    with col_tf1:
-        if st.button("⏱️ 15 Minutes", use_container_width=True, 
-                    key="forecast_tf_15m_btn",
-                    disabled=(st.session_state.selected_forecast_timeframe == '15m')):
-            st.session_state.selected_forecast_timeframe = '15m'
-            st.rerun()
-    
-    with col_tf2:
-        if st.button("⏲️ 1 Hour", use_container_width=True, 
-                    key="forecast_tf_1h_btn",
-                    disabled=(st.session_state.selected_forecast_timeframe == '1h')):
-            st.session_state.selected_forecast_timeframe = '1h'
-            st.rerun()
-    
-    with col_tf3:
-        if st.button("⏳ 4 Hours", use_container_width=True, 
-                    key="forecast_tf_4h_btn",
-                    disabled=(st.session_state.selected_forecast_timeframe == '4h')):
-            st.session_state.selected_forecast_timeframe = '4h'
-            st.rerun()
     
     st.divider()
     
