@@ -885,10 +885,12 @@ with tab2:
     # 📉 V3 FEATURE: Advanced Plotly Intelligence Charts
     st.subheader("📊 Intelligence Visualization")
     
+    # ✅ Initialize session state for timeframe (outside any condition)
+    if 'selected_forecast_timeframe' not in st.session_state:
+        st.session_state.selected_forecast_timeframe = '1h'
+    
     # A. Sentiment vs Price Correlation
     chart_asset = st.selectbox("Select Correlation Data", ["BTC", "ETH", "SOL"], key="chart_sel")
-    
-    # Fetch data from engine
     hist_price = engine.get_historical_candles(chart_asset + "USDT")
     
     # --- SAFETY CHECK: Only proceed if data is valid ---
@@ -907,16 +909,10 @@ with tab2:
         )
         st.plotly_chart(fig, use_container_width=True)
         
-        # --- ⏰ TIME SERIES PREDICTION (MOVED INSIDE THE SAFETY CHECK) ---
+        # ⏰ TIME SERIES PREDICTION
         st.subheader("⏰ Price Forecast (ARIMA Time Series)")
         
-        # Initialize session state for timeframe
-        if 'selected_forecast_timeframe' not in st.session_state:
-            st.session_state.selected_forecast_timeframe = '1h'
-        
-        # Helper function to generate forecast for different timeframes
         def generate_timeframe_forecast(price_data, current_price, timeframe):
-            """Generate forecast with appropriate periods based on timeframe"""
             if timeframe == '15m':
                 periods = 12
                 hours_label = "3 Hours"
@@ -934,7 +930,6 @@ with tab2:
                 hours_label = "24 Hours"
                 conf_factor = 0.15
             
-            # Generate timestamps
             base_datetime = datetime.now()
             if timeframe == '15m':
                 timestamps = [base_datetime + timedelta(minutes=15*i) for i in range(1, periods+1)]
@@ -943,7 +938,6 @@ with tab2:
             else:
                 timestamps = [base_datetime + timedelta(hours=4*i) for i in range(1, periods+1)]
             
-            # Simulate forecast with trend continuation
             recent_trend = np.mean(np.diff(price_data[-5:]))
             predictions = []
             for i in range(periods):
@@ -964,21 +958,21 @@ with tab2:
         col_tf1, col_tf2, col_tf3 = st.columns(3)
         
         with col_tf1:
-            if st.button("⏱️ 15 Minutes", use_container_width=True, 
+            if st.button("⏱️ 15 Minutes", use_container_width=True,
                         key="forecast_tf_15m_btn",
                         disabled=(st.session_state.selected_forecast_timeframe == '15m')):
                 st.session_state.selected_forecast_timeframe = '15m'
                 st.rerun()
         
         with col_tf2:
-            if st.button("⏲️ 1 Hour", use_container_width=True, 
+            if st.button("⏲️ 1 Hour", use_container_width=True,
                         key="forecast_tf_1h_btn",
                         disabled=(st.session_state.selected_forecast_timeframe == '1h')):
                 st.session_state.selected_forecast_timeframe = '1h'
                 st.rerun()
         
         with col_tf3:
-            if st.button("⏳ 4 Hours", use_container_width=True, 
+            if st.button("⏳ 4 Hours", use_container_width=True,
                         key="forecast_tf_4h_btn",
                         disabled=(st.session_state.selected_forecast_timeframe == '4h')):
                 st.session_state.selected_forecast_timeframe = '4h'
@@ -986,22 +980,24 @@ with tab2:
         
         st.divider()
         
-        with st.spinner(f"Generating {st.session_state.selected_forecast_timeframe} forecast for {chart_asset}..."):
+        # ✅ Use a local variable to avoid repeated session state access
+        current_timeframe = st.session_state.selected_forecast_timeframe
+        
+        with st.spinner(f"Generating {current_timeframe} forecast for {chart_asset}..."):
             current_price = hist_price['close'].iloc[-1]
             forecast_data = generate_timeframe_forecast(
-                hist_price['close'].values, 
+                hist_price['close'].values,
                 current_price,
-                st.session_state.selected_forecast_timeframe
+                current_timeframe
             )
             
             if forecast_data:
                 # Create forecast visualization
                 forecast_fig = go.Figure()
                 
-                # Add historical prices (context)
-                if st.session_state.selected_forecast_timeframe == '15m':
+                if current_timeframe == '15m':
                     lookback = min(48, len(hist_price))
-                elif st.session_state.selected_forecast_timeframe == '1h':
+                elif current_timeframe == '1h':
                     lookback = min(72, len(hist_price))
                 else:
                     lookback = min(96, len(hist_price))
@@ -1013,18 +1009,16 @@ with tab2:
                     y=hist_price['close'].iloc[hist_start:],
                     name="Historical Price",
                     line=dict(color="#00d4aa", width=2),
-                    mode="lines",
-                    hovertemplate="<b>Historical</b><br>Time: %{x}<br>Price: $%{y:.2f}<extra></extra>"
+                    mode="lines"
                 ))
                 
                 forecast_fig.add_trace(go.Scatter(
                     x=forecast_data['timestamps'],
                     y=forecast_data['predictions'],
-                    name=f"{st.session_state.selected_forecast_timeframe.upper()} Forecast",
+                    name=f"{current_timeframe.upper()} Forecast",
                     line=dict(color="#ffa500", width=2, dash="dash"),
                     mode="lines+markers",
-                    marker=dict(size=6),
-                    hovertemplate="<b>Forecast</b><br>Time: %{x}<br>Price: $%{y:.2f}<extra></extra>"
+                    marker=dict(size=6)
                 ))
                 
                 std_dev = np.std(forecast_data['predictions']) * forecast_data['conf_factor']
@@ -1037,13 +1031,11 @@ with tab2:
                     fill="toself",
                     fillcolor="rgba(255, 165, 0, 0.2)",
                     line=dict(color="rgba(255, 165, 0, 0)"),
-                    name="Confidence Band (±" + f"{(std_dev/current_price*100):.1f}%)",
-                    showlegend=True,
-                    hoverinfo="skip"
+                    name="Confidence Band (±" + f"{(std_dev/current_price*100):.1f}%)"
                 ))
                 
                 forecast_fig.update_layout(
-                    title=f"{chart_asset} - {st.session_state.selected_forecast_timeframe.upper()} Forecast ({forecast_data['hours_label']})",
+                    title=f"{chart_asset} - {current_timeframe.upper()} Forecast ({forecast_data['hours_label']})",
                     xaxis_title="Time",
                     yaxis_title="Price (USD)",
                     template="plotly_dark",
@@ -1055,31 +1047,27 @@ with tab2:
                 
                 st.plotly_chart(forecast_fig, use_container_width=True)
                 
-                # Display forecast metrics
+                # Metrics
                 metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
-                
                 with metric_col1:
                     min_pred = min(forecast_data['predictions'])
                     change_pct = ((min_pred / current_price) - 1) * 100
                     st.metric("Forecast Low", f"${min_pred:.2f}", f"{change_pct:+.2f}%")
-                
                 with metric_col2:
                     max_pred = max(forecast_data['predictions'])
                     change_pct = ((max_pred / current_price) - 1) * 100
                     st.metric("Forecast High", f"${max_pred:.2f}", f"{change_pct:+.2f}%")
-                
                 with metric_col3:
                     end_pred = forecast_data['predictions'][-1]
                     change_pct = ((end_pred / current_price) - 1) * 100
                     st.metric("Expected Price", f"${end_pred:.2f}", f"{change_pct:+.2f}%")
-                
                 with metric_col4:
                     volatility = (std_dev / current_price) * 100
                     st.metric("Volatility Range", f"±{volatility:.2f}%", "Confidence Region")
                 
-                st.caption(f"🔄 Timeframe: {st.session_state.selected_forecast_timeframe.upper()} | Periods: {forecast_data['periods']} | Updated: {datetime.now().strftime('%H:%M:%S')}")
+                st.caption(f"🔄 Timeframe: {current_timeframe.upper()} | Periods: {forecast_data['periods']} | Updated: {datetime.now().strftime('%H:%M:%S')}")
             else:
-                st.warning(f"⚠️ Unable to generate forecast for {chart_asset}. Please try again...")
+                st.warning(f"⚠️ Unable to generate forecast for {chart_asset}.")
     else:
         st.warning(f"📊 Market correlation data for {chart_asset} is temporarily unavailable. The Binance API may be rate-limiting the server.")
     
