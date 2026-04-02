@@ -1,0 +1,13 @@
+Ingestion: Python scripts pulling from Binance (REST), Reddit (PRAW), and NewsAPI.
+
+
+Storage: Real-time sync to a Dockerized PostgreSQL instance.
+
+
+NLP Brain: Mistral 7B (Ollama) performing few-shot sentiment classification.
+
+
+Quant Brain: Facebook Prophet training on 3 months of OHLCV candles to forecast directional movement.
+
+
+Synthesis: An "Explainable AI" layer that triggers desktop alerts only when Sentiment and Price trends align.

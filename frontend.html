@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Intelligence - Real-Time Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #1e40af;
+            --secondary: #7c3aed;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --dark: #0f172a;
+            --darker: #020617;
+            --card: #1e293b;
+            --border: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #cbd5e1;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, var(--dark) 0%, var(--darker) 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ===== HEADER ===== */
+        .header {
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border);
+            padding: 1.5rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 2rem;
+        }
+
+        .header-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator.disconnected {
+            background: var(--danger);
+            animation: none;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* ===== MAIN CONTAINER ===== */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* ===== PRICE TICKER =====*/
+        .ticker-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .price-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .price-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .price-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(30, 64, 175, 0.15);
+        }
+
+        .price-card:hover::before {
+            opacity: 1;
+        }
+
+        .price-card.updating {
+            box-shadow: inset 0 0 20px rgba(16, 185, 129, 0.2);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 1rem;
+        }
+
+        .symbol {
+            font-size: 1.125rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .symbol-name {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 0.25rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .update-badge {
+            display: inline-block;
+            background: rgba(16, 185, 129, 0.2);
+            border: 1px solid rgba(16, 185, 129, 0.5);
+            color: var(--success);
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.65rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .price-card.updating .update-badge {
+            opacity: 1;
+        }
+
+        .price-value {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: -0.02em;
+        }
+
+        .price-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .stat {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 600;
+        }
+
+        .stat-value {
+            font-size: 1.125rem;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .stat-value.positive {
+            color: var(--success);
+        }
+
+        .stat-value.negative {
+            color: var(--danger);
+        }
+
+        .change-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 0.75rem;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            width: fit-content;
+        }
+
+        .change-badge.positive {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--success);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .change-badge.negative {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--danger);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .arrow {
+            display: inline-block;
+            transition: transform 0.3s ease;
+        }
+
+        .change-badge.positive .arrow {
+            transform: rotate(-45deg);
+        }
+
+        .change-badge.negative .arrow {
+            transform: rotate(135deg);
+        }
+
+        /* ===== CHARTS SECTION ===== */
+        .charts-section {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 2rem;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 400px;
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 1rem;
+            border: 1px solid var(--border);
+        }
+
+        .chart-title {
+            position: absolute;
+            top: 1rem;
+            left: 1rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            z-index: 10;
+            background: var(--card);
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+        }
+
+        /* ===== CONTROLS ===== */
+        .controls {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem 2rem;
+            margin-bottom: 2rem;
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 0.5rem;
+            flex: 1;
+            min-width: 300px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 0.75rem 1rem;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.1);
+        }
+
+        input[type="text"]::placeholder {
+            color: var(--text-secondary);
+        }
+
+        button {
+            padding: 0.75rem 1.5rem;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.95rem;
+            white-space: nowrap;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(30, 64, 175, 0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button.secondary {
+            background: rgba(124, 58, 237, 0.2);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        button.secondary:hover {
+            border-color: var(--secondary);
+            background: rgba(124, 58, 237, 0.3);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* ===== STATS PANEL ===== */
+        .stats-panel {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.25rem;
+            text-align: center;
+        }
+
+        .stat-card-title {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-card-value {
+            font-size: 1.875rem;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* ===== ANIMATIONS ===== */
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .price-card {
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .highlight {
+            animation: float 0.6s ease-in-out;
+        }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            .header-content {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .ticker-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .controls {
+                flex-direction: column;
+            }
+
+            .input-group {
+                width: 100%;
+            }
+        }
+
+        /* ===== LOADING STATE ===== */
+        .loading {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 1rem;
+            height: 1rem;
+            border: 2px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <h1 class="header-title">💰 Crypto Intelligence</h1>
+            <div class="header-status">
+                <div class="status-indicator" id="statusIndicator"></div>
+                <span id="statusText">Connecting...</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="container">
+        <!-- Statistics Panel -->
+        <div class="stats-panel" id="statsPanel">
+            <div class="stat-card">
+                <div class="stat-card-title">Connected Clients</div>
+                <div class="stat-card-value" id="clientCount">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card-title">Active Symbols</div>
+                <div class="stat-card-value" id="symbolCount">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card-title">Updates/Min</div>
+                <div class="stat-card-value" id="updateRate">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card-title">Last Update</div>
+                <div class="stat-card-value" id="lastUpdate">--:--</div>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="controls">
+            <div class="input-group">
+                <input 
+                    type="text" 
+                    id="symbolInput" 
+                    placeholder="Enter symbol(s): BTC, ETH, SOL, ADA, BNB..."
+                    value="BTC, ETH, SOL"
+                />
+            </div>
+            <button id="subscribeBtn" onclick="subscribeToSymbols()">Subscribe</button>
+            <button class="secondary" id="clearBtn" onclick="clearAllData()">Clear All</button>
+        </div>
+
+        <!-- Price Ticker -->
+        <div class="ticker-grid" id="priceGrid">
+            <!-- Dynamically populated -->
+        </div>
+
+        <!-- Charts Section -->
+        <div class="charts-section">
+            <div class="charts-grid">
+                <div class="chart-container">
+                    <div class="chart-title">Price Movement</div>
+                    <canvas id="priceChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <div class="chart-title">24H Change Distribution</div>
+                    <canvas id="changeChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ===== CONFIGURATION =====
+        const WS_URL = 'ws://localhost:8000/ws';
+        const UPDATE_INTERVAL = 2000; // milliseconds
+        
+        // ===== STATE =====
+        let ws = null;
+        let priceData = {};
+        let subscribedSymbols = new Set();
+        let updateCount = 0;
+        let chartInstances = {};
+
+        // ===== WEBSOCKET CONNECTION =====
+        function connectWebSocket() {
+            try {
+                ws = new WebSocket(WS_URL);
+                
+                ws.onopen = () => {
+                    console.log('✅ WebSocket connected');
+                    updateStatus(true);
+                    // Auto-subscribe to default symbols
+                    subscribeToSymbols();
+                };
+                
+                ws.onmessage = (event) => {
+                    const message = JSON.parse(event.data);
+                    handleMessage(message);
+                };
+                
+                ws.onerror = (error) => {
+                    console.error('❌ WebSocket error:', error);
+                    updateStatus(false);
+                };
+                
+                ws.onclose = () => {
+                    console.log('❌ WebSocket disconnected');
+                    updateStatus(false);
+                    // Reconnect after 3 seconds
+                    setTimeout(connectWebSocket, 3000);
+                };
+            } catch (error) {
+                console.error('Connection error:', error);
+                updateStatus(false);
+            }
+        }
+
+        // ===== MESSAGE HANDLER =====
+        function handleMessage(message) {
+            const { type, symbol, data, symbols } = message;
+
+            if (type === 'price_update') {
+                priceData[symbol] = data;
+                updatePriceCard(symbol, data);
+                updateCount++;
+                updateStats();
+                updateCharts();
+            } else if (type === 'subscription_confirmed') {
+                console.log('✅ Subscribed to:', symbols);
+                symbols.forEach(s => subscribedSymbols.add(s));
+                updateSymbolCount();
+            } else if (type === 'error') {
+                console.error('API Error:', message.error);
+            }
+        }
+
+        // ===== SUBSCRIBE TO SYMBOLS =====
+        function subscribeToSymbols() {
+            const input = document.getElementById('symbolInput').value;
+            const symbols = input
+                .split(',')
+                .map(s => s.trim().toUpperCase())
+                .filter(s => s.length > 0);
+
+            if (symbols.length === 0) {
+                alert('Please enter at least one symbol');
+                return;
+            }
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    action: 'subscribe',
+                    symbols: symbols
+                }));
+                
+                // Create price cards for new symbols
+                symbols.forEach(symbol => {
+                    if (!priceData[symbol]) {
+                        priceData[symbol] = {
+                            price: 0,
+                            change_24h: 0,
+                            symbol: symbol
+                        };
+                        renderPriceCard(symbol);
+                    }
+                });
+            }
+        }
+
+        // ===== RENDER PRICE CARD =====
+        function renderPriceCard(symbol) {
+            const grid = document.getElementById('priceGrid');
+            
+            // Check if card already exists
+            if (document.getElementById(`card-${symbol}`)) return;
+
+            const card = document.createElement('div');
+            card.className = 'price-card';
+            card.id = `card-${symbol}`;
+            card.innerHTML = `
+                <div class="card-header">
+                    <div>
+                        <div class="symbol">${symbol}</div>
+                        <div class="symbol-name">${symbol} / USDT</div>
+                    </div>
+                    <div class="update-badge">Live</div>
+                </div>
+                <div class="price-value" id="price-${symbol}">$0.00</div>
+                <div class="price-stats">
+                    <div class="stat">
+                        <div class="stat-label">24H Change</div>
+                        <div id="change-${symbol}" class="change-badge">
+                            <span class="arrow">➜</span>
+                            <span>0.00%</span>
+                        </div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">Market Cap</div>
+                        <div id="marketcap-${symbol}" class="stat-value">--</div>
+                    </div>
+                </div>
+            `;
+
+            grid.appendChild(card);
+        }
+
+        // ===== UPDATE PRICE CARD =====
+        function updatePriceCard(symbol, data) {
+            const card = document.getElementById(`card-${symbol}`);
+            if (!card) return;
+
+            // Add updating animation
+            card.classList.add('updating', 'highlight');
+            setTimeout(() => {
+                card.classList.remove('updating', 'highlight');
+            }, 500);
+
+            // Update price
+            const priceEl = document.getElementById(`price-${symbol}`);
+            if (priceEl) {
+                priceEl.textContent = `$${(data.price || 0).toLocaleString('en-US', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                })}`;
+            }
+
+            // Update 24H change
+            const changeEl = document.getElementById(`change-${symbol}`);
+            if (changeEl) {
+                const change = data.change_24h || 0;
+                const isPositive = change >= 0;
+                const badgeClass = isPositive ? 'positive' : 'negative';
+                
+                changeEl.className = `change-badge ${badgeClass}`;
+                changeEl.innerHTML = `
+                    <span class="arrow">➜</span>
+                    <span>${Math.abs(change).toFixed(2)}%</span>
+                `;
+            }
+
+            // Update timestamp
+            updateLastUpdateTime();
+        }
+
+        // ===== UPDATE STATS =====
+        function updateStats() {
+            const now = new Date();
+            document.getElementById('updateRate').textContent = updateCount;
+            document.getElementById('symbolCount').textContent = subscribedSymbols.size;
+        }
+
+        function updateLastUpdateTime() {
+            const now = new Date();
+            const time = now.toLocaleTimeString('en-US', { 
+                hour: '2-digit', 
+                minute: '2-digit', 
+                second: '2-digit',
+                hour12: true 
+            });
+            document.getElementById('lastUpdate').textContent = time;
+        }
+
+        function updateSymbolCount() {
+            document.getElementById('symbolCount').textContent = subscribedSymbols.size;
+        }
+
+        // ===== UPDATE STATUS =====
+        function updateStatus(connected) {
+            const indicator = document.getElementById('statusIndicator');
+            const text = document.getElementById('statusText');
+
+            if (connected) {
+                indicator.className = 'status-indicator';
+                text.textContent = 'Connected';
+            } else {
+                indicator.className = 'status-indicator disconnected';
+                text.textContent = 'Disconnected - Reconnecting...';
+            }
+        }
+
+        // ===== UPDATE CHARTS =====
+        function updateCharts() {
+            updatePriceChart();
+            updateChangeChart();
+        }
+
+        function updatePriceChart() {
+            const ctx = document.getElementById('priceChart');
+            if (!ctx) return;
+
+            const labels = Array.from(subscribedSymbols).sort();
+            const prices = labels.map(symbol => priceData[symbol]?.price || 0);
+
+            if (!chartInstances.price) {
+                chartInstances.price = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Current Price (USD)',
+                            data: prices,
+                            borderColor: '#60a5fa',
+                            backgroundColor: 'rgba(96, 165, 250, 0.1)',
+                            borderWidth: 3,
+                            tension: 0.4,
+                            fill: true,
+                            pointBackgroundColor: '#1e40af',
+                            pointBorderColor: '#fff',
+                            pointRadius: 6,
+                            pointHoverRadius: 8
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { 
+                                display: true,
+                                labels: { color: '#cbd5e1' }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                ticks: { color: '#cbd5e1' },
+                                grid: { color: 'rgba(51, 65, 85, 0.3)' },
+                                title: { display: true, text: 'Price (USD)' }
+                            },
+                            x: {
+                                ticks: { color: '#cbd5e1' },
+                                grid: { color: 'rgba(51, 65, 85, 0.3)' }
+                            }
+                        }
+                    }
+                });
+            } else {
+                chartInstances.price.data.labels = labels;
+                chartInstances.price.data.datasets[0].data = prices;
+                chartInstances.price.update();
+            }
+        }
+
+        function updateChangeChart() {
+            const ctx = document.getElementById('changeChart');
+            if (!ctx) return;
+
+            const labels = Array.from(subscribedSymbols).sort();
+            const changes = labels.map(symbol => priceData[symbol]?.change_24h || 0);
+
+            if (!chartInstances.change) {
+                chartInstances.change = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: '24H Change (%)',
+                            data: changes,
+                            backgroundColor: changes.map(c => c >= 0 ? '#10b981' : '#ef4444'),
+                            borderRadius: 6,
+                            borderSkipped: false
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { 
+                                display: true,
+                                labels: { color: '#cbd5e1' }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                ticks: { color: '#cbd5e1' },
+                                grid: { color: 'rgba(51, 65, 85, 0.3)' },
+                                title: { display: true, text: '24H Change (%)' }
+                            },
+                            x: {
+                                ticks: { color: '#cbd5e1' },
+                                grid: { color: 'rgba(51, 65, 85, 0.3)' }
+                            }
+                        }
+                    }
+                });
+            } else {
+                chartInstances.change.data.labels = labels;
+                chartInstances.change.data.datasets[0].data = changes;
+                chartInstances.change.data.datasets[0].backgroundColor = changes.map(c => c >= 0 ? '#10b981' : '#ef4444');
+                chartInstances.change.update();
+            }
+        }
+
+        // ===== CLEAR ALL DATA =====
+        function clearAllData() {
+            priceData = {};
+            subscribedSymbols.clear();
+            document.getElementById('priceGrid').innerHTML = '';
+            Object.values(chartInstances).forEach(chart => chart.destroy());
+            chartInstances = {};
+        }
+
+        // ===== INITIALIZE =====
+        document.addEventListener('DOMContentLoaded', () => {
+            connectWebSocket();
+            setInterval(updateStats, 1000);
+        });
+
+        // ===== KEYBOARD SHORTCUTS =====
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && document.getElementById('symbolInput') === document.activeElement) {
+                subscribeToSymbols();
+            }
+        });
+    </script>
+</body>
+</html>

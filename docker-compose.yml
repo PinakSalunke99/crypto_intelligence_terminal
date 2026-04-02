@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    container_name: crypto_db
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - crypto_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  websocket_server:
+    build: .
+    container_name: crypto_websocket
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - crypto_network
+    command: python websocket_server.py
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  app:
+    build: .
+    container_name: crypto_app
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - websocket_server
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - crypto_network
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - WEBSOCKET_URL=http://websocket_server:8000
+    restart: unless-stopped
+
+networks:
+  crypto_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
