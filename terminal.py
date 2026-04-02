@@ -736,22 +736,48 @@ if 'last_refresh_time' not in st.session_state:
     st.session_state.last_refresh_time = time.time()
 
 def fetch_websocket_prices():
-    """Cloud-friendly direct price fetching"""
-    # Define symbols here or pull from session state
-    symbols = ["BTC", "ETH", "SOL", "BNB", "ADA"]
-    price_data = {}
-    
-    # In the cloud, we bypass the WebSocket and call the engine directly
-    for symbol in symbols:
-        try:
-            # engine is your InstitutionalDataEngine instance
-            price_info = engine.get_sentiment_score(symbol)
-            if price_info:
-                price_data[symbol + "USDT"] = price_info
-        except Exception:
-            continue
+    """Fetch prices directly from Binance API"""
+    try:
+        current_time = time.time()
+        
+        # Check if we should fetch (every 2 seconds max)
+        if st.session_state.last_fetch is not None:
+            if (current_time - st.session_state.last_fetch) < 2:
+                return st.session_state.price_data if st.session_state.price_data else {}
+        
+        # Fetch fresh data directly from Binance
+        st.session_state.last_fetch = current_time
+        
+        symbols = ["BTC", "ETH", "SOL", "BNB", "ADA"]
+        price_data = {}
+        
+        for symbol in symbols:
+            try:
+                # Fetch from engine's get_sentiment_score method which uses Binance API
+                price_info = engine.get_sentiment_score(symbol)
+                if price_info:
+                    key = symbol + "USDT"
+                    price = float(price_info.get('price', 0))
+                    change = float(price_info.get('change_24h', 0))
+                    
+                    price_data[key] = {
+                        'price': price,
+                        'change_24h': change,
+                        'symbol': symbol
+                    }
+            except Exception as e:
+                # Use cached data if available
+                continue
+        
+        if price_data:  # Only update if we got valid data
+            st.session_state.price_data = price_data
+            st.session_state.last_refresh_time = current_time
+            return price_data
+        else:
+            return st.session_state.price_data if st.session_state.price_data else {}
             
-    return price_data
+    except Exception as e:
+        return st.session_state.price_data if st.session_state.price_data else {}
 
 # 💹 REAL-TIME HEATMAP - Using WebSocket Server (No Blackout/Flicker)
 st.markdown("### 💹 Live Crypto Prices")
