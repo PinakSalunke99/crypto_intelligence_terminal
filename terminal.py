@@ -815,8 +815,7 @@ with tab1:
     
     col_sel, col_run = st.columns([3, 1])
     selected_asset = col_sel.selectbox("Target Asset", symbols, index=0, key="council_asset")
-    
-   if col_run.button("🚀 ANALYZE", width='stretch'):
+    if col_run.button("🚀 ANALYZE", width='stretch'):
         with st.spinner("Coordinating Agent Council..."):
             # 1. Gather Intelligence
             price_df = engine.get_historical_candles(selected_asset)
@@ -881,7 +880,7 @@ with tab1:
             else:
                 # Show error message instead of crashing
                 st.error(f"⚠️ Market Data Unavailable for {selected_asset}. Binance API may be rate-limiting the cloud server. Please retry in a few seconds.")
-
+                
 with tab2:
     # 📉 V3 FEATURE: Advanced Plotly Intelligence Charts
     st.subheader("📊 Intelligence Visualization")
