@@ -887,23 +887,31 @@ with tab2:
     
     # A. Sentiment vs Price Correlation
     chart_asset = st.selectbox("Select Correlation Data", ["BTC", "ETH", "SOL"], key="chart_sel")
+    
+    # Fetch data from engine
     hist_price = engine.get_historical_candles(chart_asset + "USDT")
     
-    # Mocking sentiment data for the trend chart
-    sent_trend = [0.5 + (np.random.random()-0.5)*0.2 for _ in range(len(hist_price))]
-    
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=hist_price['timestamp'], y=hist_price['close'], name="Price", yaxis="y"))
-    fig.add_trace(go.Bar(x=hist_price['timestamp'], y=sent_trend, name="AI Sentiment", yaxis="y2", opacity=0.3))
-    
-    fig.update_layout(
-        title=f"{chart_asset} Sentiment-Price Divergence",
-        yaxis=dict(title="Price ($)"),
-        yaxis2=dict(title="Sentiment Score", overlaying="y", side="right", range=[0, 1]),
-        template="plotly_dark",
-        height=400
-    )
-    st.plotly_chart(fig, width='stretch')
+    # --- THE FIX: SAFETY CHECK ---
+    if hist_price is not None and not hist_price.empty:
+        # Mocking sentiment data for the trend chart
+        # We only run this if hist_price actually has rows to avoid TypeError
+        sent_trend = [0.5 + (np.random.random()-0.5)*0.2 for _ in range(len(hist_price))]
+        
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=hist_price['timestamp'], y=hist_price['close'], name="Price", yaxis="y"))
+        fig.add_trace(go.Bar(x=hist_price['timestamp'], y=sent_trend, name="AI Sentiment", yaxis="y2", opacity=0.3))
+        
+        fig.update_layout(
+            title=f"{chart_asset} Sentiment-Price Divergence",
+            yaxis=dict(title="Price ($)"),
+            yaxis2=dict(title="Sentiment Score", overlaying="y", side="right", range=[0, 1]),
+            template="plotly_dark",
+            height=400
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning(f"📊 Market correlation data for {chart_asset} is temporarily unavailable. The Binance API may be rate-limiting the server.")
+    # --- END OF FIX ---
 
     # ⏰ TIME SERIES PREDICTION - Timeframe-based Forecast using ARIMA Model
     st.subheader("⏰ Price Forecast (ARIMA Time Series)")
