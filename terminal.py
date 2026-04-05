@@ -898,11 +898,11 @@ with tab2:
     #replacement
     hist_price = engine.get_historical_candles(chart_asset + "USDT")
 
-if hist_price is None or len(hist_price) == 0:
-    st.error("Failed to fetch historical data")
-    st.stop()
+    if hist_price is None or len(hist_price) == 0:
+        st.error("Failed to fetch historical data")
+        st.stop()
 
-sent_trend = [0.5 + (np.random.random()-0.5)*0.2 for _ in range(len(hist_price))]
+    sent_trend = [0.5 + (np.random.random()-0.5)*0.2 for _ in range(len(hist_price))]
 
 #replacement complete
     
